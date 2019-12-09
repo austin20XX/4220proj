@@ -5,7 +5,7 @@
 #include <string>
 #include <list>
 #include <unistd.h>
-
+#include <algorithm>
 namespace wiringPi {
 #include <wiringPi.h>
 }
@@ -41,15 +41,16 @@ class Jukebox {
         ~Jukebox();
 
 	std::list<song_t> getSongs() const;
-	std::list<song_selection> getQueue() const;
 	float getChange() const;
-	void addRequest(song_t, std::string);
+	bool addRequest(int, std::string);
+	bool removeRequest(int, std::string);
 	void addChange(int, int, int);
 	bool refundChange(float);
 	void printQueue() const;
-	
+	void printSongs() const;	
 	enum button_t {
-		refund = 17, //button 2
+		song_select = 27, 
+		refund = 0, //button 2
 		quarter = 1,
 		dime = 24,
 		nickel = 28,
@@ -90,9 +91,26 @@ class Jukebox {
 std::list<song_t> Jukebox::getSongs() const {
  	return available_songs;
 }
-//Queue accessor
-std::list<song_selection> Jukebox::getQueue() const {
-	return song_queue;
+
+//Queue printer
+void Jukebox::printSongs() const {
+	int i=1;
+	std::cout << "\nPlease select a song you would like to add to the queue" <<std::endl;
+	for(auto song : available_songs) {
+		std::cout << i << ": " << song.title << " by " << song.artist;
+		std::cout << ". Cost: $ "<< song.price << std::endl;
+		i++;
+	}
+	
+}
+
+void Jukebox::printQueue() const {
+	int i = 1;
+	std::cout << "\nThe current order of the song queue is: " << std::endl;
+	for(auto selection : song_queue) {
+		std::cout << i << ": " << selection.song.title << " by " << selection.song.artist;
+		std::cout << ". Number of requests: " << selection.request_count <<std::endl;
+	}	
 }
 //Amount of money input accessor
 float Jukebox::getChange() const {
@@ -100,35 +118,83 @@ float Jukebox::getChange() const {
 }
 
 //Add a song to the queue
-void Jukebox::addRequest(song_t req, std::string password) {
+bool Jukebox::addRequest(int song_num, std::string password) {
+	auto song = available_songs.begin();
 	auto queue_iterator = song_queue.begin();
+	int i=1;
+	for(i; i < song_num; i++) {
+		if(song==available_songs.end()){
+			return false;
+		}
+		else{
+			song++;
+		}
+	}
+	
+	if(song->price > accumulator){
+		return false;
+	}
+
 	for(queue_iterator; queue_iterator != song_queue.end(); ++queue_iterator) {
-		if(req.title.compare((queue_iterator->song).title) == 0 &&
-			req.artist.compare((queue_iterator->song).artist) == 0 ) {
+		if(song->title.compare((queue_iterator->song).title) == 0 &&
+			song->artist.compare((queue_iterator->song).artist) == 0 ) {
 				(queue_iterator->passwords).push_back(password);
 				(queue_iterator->request_count)++;
 				song_queue.sort(queue_sort);
-				return;	
+				accumulator = 0.0;
+				return true;	
 		}
 	}
 
 	song_selection new_select;
-	new_select.song = req;
+	new_select.song = *song;
 	new_select.passwords.push_back(password);
 	new_select.request_count++;
 
 	song_queue.push_back(new_select);
-	return;
+	accumulator = 0.0;	
+	return true;
+}
+
+bool Jukebox::removeRequest(int song_num, std::string password) {
+	auto selection = song_queue.begin();
+
+	int i=1;
+	for(i; i < song_num; i++) {
+		if(selection==song_queue.end()){
+			return false;
+		}
+		else{
+			selection++;
+		}
+	}
+	
+	auto pw_iterator = selection->passwords.begin();
+	for(auto pw : selection->passwords) {
+		if(password.compare(pw) == 0){
+			(selection->request_count)--;
+			song_queue.sort(queue_sort);
+			//If the count got decreased to 0. Pop the last element since it should be at end after sort
+			std::cout << "Refunding: " << selection->song.price << std::endl;	
+			refundChange(selection->song.price);
+			if(selection->request_count == 0) {
+				song_queue.pop_back();	
+			}
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool queue_sort(const song_selection& first, const song_selection& second) {
 	if(first.request_count > second.request_count) {
-		return false;
-	}
-	else if(first.request_count < second.request_count) {
 		return true;
 	}
-	return false;
+	else if(first.request_count < second.request_count) {
+		return false;
+	}
+	return true;
 }
 
 //return the change
@@ -137,9 +203,9 @@ bool Jukebox::refundChange(float amount) {
 	while(remaining > 0 ) {
 		if(coin_bank.quarters > 0 && remaining >= .25) {
 			wiringPi::digitalWrite(yellowLed, HIGH);
-			usleep(500000);
+			usleep(750000);
 			wiringPi::digitalWrite(yellowLed, LOW);
-			usleep(500000);
+			usleep(750000);
 
 			remaining-=.25;
 			coin_bank.quarters--;
@@ -147,9 +213,9 @@ bool Jukebox::refundChange(float amount) {
 		}
 		else if(coin_bank.dimes > 0 && remaining >= .10) {
 			wiringPi::digitalWrite(greenLed, HIGH);
-			usleep(500000);
+			usleep(750000);
 			wiringPi::digitalWrite(greenLed, LOW);
-			usleep(500000);
+			usleep(750000);
 			
 			remaining-=.10;
 			coin_bank.dimes--;
@@ -157,9 +223,9 @@ bool Jukebox::refundChange(float amount) {
 		}
 		else if(coin_bank.nickels > 0 && remaining >= .05) {
 			wiringPi::digitalWrite(blueLed, HIGH);
-			usleep(500000);
+			usleep(750000);
 			wiringPi::digitalWrite(blueLed, LOW);
-			usleep(500000);
+			usleep(750000);
 			
 			remaining-=.05;
 			coin_bank.nickels--;
@@ -168,9 +234,9 @@ bool Jukebox::refundChange(float amount) {
 		else if(remaining > 0 ) {
 			//Unable to make change
 			wiringPi::digitalWrite(redLed, HIGH);
-			usleep(500000);
+			usleep(750000);
 			wiringPi::digitalWrite(redLed, LOW);
-			usleep(500000);
+			usleep(750000);
 
 			accumulator = 0.0;
 			return false;
