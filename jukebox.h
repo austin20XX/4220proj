@@ -6,9 +6,14 @@
 #include <list>
 #include <unistd.h>
 #include <algorithm>
+#include <ao/ao.h>
+#include <mpg123.h>
+
 namespace wiringPi {
 #include <wiringPi.h>
 }
+
+#define BITS 8
 
 typedef struct sawng {
 	std::string title;
@@ -47,7 +52,8 @@ class Jukebox {
 	void addChange(int, int, int);
 	bool refundChange(float);
 	void printQueue() const;
-	void printSongs() const;	
+	void printSongs() const;
+	bool playNext();	
 	enum button_t {
 		song_select = 27, 
 		refund = 0, //button 2
@@ -83,9 +89,76 @@ class Jukebox {
 	std::list<song_t> available_songs;
 	std::list<song_selection> song_queue;
 
-
+	const char* getNextPath();
 	
 }; //end class
+
+const char* Jukebox::getNextPath(){
+	auto n = song_queue.front();
+	
+	const char* path = n.song.path.c_str();
+
+	song_queue.pop_front();
+
+	return path;
+
+}
+
+bool Jukebox::playNext() {
+
+	if(song_queue.empty()){
+		return false;
+	}
+
+	mpg123_handle *mh;
+	unsigned char *buffer;
+	size_t buffer_size;
+	size_t done;
+	int err;
+
+	int driver;
+	ao_device *dev;
+
+	ao_sample_format format;
+	int channels, encoding;
+	long rate;
+
+
+	    /* initializations */
+	ao_initialize();
+	driver = ao_default_driver_id();
+	mpg123_init();
+	mh = mpg123_new(NULL, &err);
+	buffer_size = mpg123_outblock(mh);
+	buffer = (unsigned char*) malloc(buffer_size * sizeof(unsigned char));
+
+	    /* open the file and get the decoding format */
+	mpg123_open(mh, getNextPath());
+	mpg123_getformat(mh, &rate, &channels, &encoding);
+
+	    /* set the output format and open the output device */
+	format.bits = mpg123_encsize(encoding) * BITS;
+	format.rate = rate;
+	format.channels = channels;
+	format.byte_format = AO_FMT_NATIVE;
+	format.matrix = 0;
+	dev = ao_open_live(driver, &format, NULL);
+
+	    /* decode and play */
+	while (mpg123_read(mh, buffer, buffer_size, &done) == MPG123_OK){
+		ao_play(dev, (char*)buffer, done);
+	}
+
+		/* clean up */
+	free(buffer);
+	ao_close(dev);
+	mpg123_close(mh);
+	mpg123_delete(mh);
+	mpg123_exit();
+	ao_shutdown();
+	return true;
+}
+
 
 //song accessor
 std::list<song_t> Jukebox::getSongs() const {
@@ -294,6 +367,7 @@ Jukebox::Jukebox() {
 	wiringPi::pinMode(yellowLed, OUTPUT);
 	wiringPi::pinMode(greenLed, OUTPUT);
 	wiringPi::pinMode(blueLed, OUTPUT);
+	wiringPi::pinMode(redLed, OUTPUT);
 
 	wiringPi::digitalWrite(blueLed, LOW);
 	wiringPi::digitalWrite(redLed, LOW);

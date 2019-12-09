@@ -11,6 +11,7 @@
 void *coin_thread_fn(void*);
 void *select_thread_fn(void*);
 void *refund_thread_fn(void*);
+void *play_thread_fn(void*);
 //Mutex
 std::mutex cout_mutex;
 std::mutex quarter_mutex;
@@ -60,7 +61,19 @@ int main(void) {
 	pthread_create(&coin_thread, NULL, coin_thread_fn, NULL);
 	pthread_create(&selection_thread, NULL, select_thread_fn, NULL);
 	pthread_create(&refund_thread, NULL, refund_thread_fn, NULL);
+	pthread_create(&play_thread, NULL, play_thread_fn, NULL);
+
+
 	pthread_exit(NULL);
+}
+
+void *play_thread_fn(void *arg){
+
+	while(1) {
+		jukebox.playNext();
+		sleep(2);
+	}
+	pthread_testcancel();
 }
 
 void *coin_thread_fn(void* arg){
