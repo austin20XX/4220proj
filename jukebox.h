@@ -105,7 +105,8 @@ const char* Jukebox::getNextPath(){
 }
 
 bool Jukebox::playNext() {
-
+	
+	//code from https://hzqtc.github.io/2012/05/play-mp3-with-libmpg123-and-libao.html
 	if(song_queue.empty()){
 		return false;
 	}
